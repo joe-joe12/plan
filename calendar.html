@@ -25,7 +25,16 @@ h2{font-size:1.1rem;margin:0 0 8px}
 .nav strong{font-size:1.25rem}
 .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .dow{font-size:.8rem;color:var(--muted);text-align:center;padding:2px 0}
-.cell{min-height:76px;text-align:left;padding:4px 5px;background:var(--paper);border:1.5px solid var(--line);border-radius:4px;color:var(--ink);font-weight:400;overflow:hidden;display:flex;flex-direction:column;gap:2px}
+.tray{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--hl);color:#1f2a44;border:1.5px solid var(--ink);border-radius:4px;padding:3px 4px 3px 10px;font-weight:700;font-size:.9rem;cursor:grab;touch-action:none;user-select:none}
+.chip button{padding:0 6px;font-size:.85rem;background:transparent;border:0;color:#1f2a44;opacity:.6}
+.chip button:hover{opacity:1;filter:none}
+.ghostchip{position:fixed;z-index:50;pointer-events:none;opacity:.92;transform:translate(-50%,-50%);padding-right:10px}
+.dragtxt{cursor:grab;touch-action:none;user-select:none}
+.cell.over{outline:3px dashed var(--ink);outline-offset:-3px}
+.cell .u{font-size:.72rem;line-height:1.25;background:var(--hl);color:#1f2a44;border-radius:3px;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell.sel .u{background:#fff;border:1px solid #1f2a44}
+.cell{min-height:96px;text-align:left;padding:4px 5px;background:var(--paper);border:1.5px solid var(--line);border-radius:4px;color:var(--ink);font-weight:400;overflow:hidden;display:flex;flex-direction:column;gap:2px}
 .cell.out{opacity:.45}
 .cell.today{border-color:var(--ink)}
 .cell.sel{background:var(--hl);color:#1f2a44;border-color:var(--ink)}
@@ -63,6 +72,16 @@ details summary{cursor:pointer;font-weight:700}
   <a href="index.html">回到複習計畫</a>
 </header>
 <div class="layout">
+  <div>
+  <div class="panel">
+    <h2>單元模塊</h2>
+    <div class="row" style="grid-template-columns:1fr auto;align-items:end;margin-top:0">
+      <label>自己填單元名稱<input type="text" id="unText" maxlength="30" placeholder="例如：數學第一課"></label>
+      <button type="button" id="unAdd">加入模塊</button>
+    </div>
+    <div class="tray" id="tray"></div>
+    <p class="hint">把模塊拖到下方日曆的某一天，就會排進那天；也可以先點選日期，再點一下模塊。已排的單元可以再拖到別天。</p>
+  </div>
   <div class="panel">
     <div class="nav">
       <button type="button" id="prev" aria-label="上個月">上個月</button>
@@ -71,15 +90,16 @@ details summary{cursor:pointer;font-weight:700}
     </div>
     <div class="grid" id="grid"></div>
   </div>
+  </div>
   <div id="side"></div>
 </div>
 </div>
 
 <script>
 (function(){
-  var KEY='exam-calendar-v1', state={events:[],books:[],vocab:{}};
+  var KEY='exam-calendar-v1', state={events:[],books:[],vocab:{},units:[],plans:[]};
   var WD=['日','一','二','三','四','五','六'];
-  function load(){try{var d=JSON.parse(localStorage.getItem(KEY));if(d&&d.events&&d.books&&d.vocab)state=d;}catch(e){}}
+  function load(){try{var d=JSON.parse(localStorage.getItem(KEY));if(d&&d.events&&d.books&&d.vocab){d.units=d.units||[];d.plans=d.plans||[];state=d;}}catch(e){}}
   function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
   function uid(){return Math.random().toString(36).slice(2,10);}
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -102,6 +122,7 @@ details summary{cursor:pointer;font-weight:700}
         +'<span class="n">'+d.getDate()+'</span>'
         +evs.slice(0,2).map(function(e){return '<span class="e">'+esc(e.title)+'</span>';}).join('')
         +(evs.length>2?'<span class="e">+'+(evs.length-2)+' 項</span>':'')
+        +state.plans.filter(function(p){return p.date===k;}).slice(0,2).map(function(p){return '<span class="u">'+(p.done?'✓ ':'')+esc(p.text)+'</span>';}).join('')
         +(v?'<span class="v">'+(v.done?'✓ ':'')+esc(v.text)+'</span>':'')+'</button>';
     }
     document.getElementById('grid').innerHTML=h;
@@ -114,6 +135,10 @@ details summary{cursor:pointer;font-weight:700}
     var v=state.vocab[sel];
     var h='<div class="panel"><div class="big">'+(d.getMonth()+1)+' 月 '+d.getDate()+' 日（週'+WD[d.getDay()]+'）</div></div>';
 
+    var pls=state.plans.filter(function(p){return p.date===sel;});
+    h+='<div class="panel"><h2>這天排的單元</h2><ul>'+(pls.length?pls.map(function(p){
+      return '<li class="'+(p.done?'done':'')+'"><input type="checkbox" data-plan-done="'+p.id+'"'+(p.done?' checked':'')+' aria-label="完成：'+esc(p.text)+'"><span class="dragtxt" data-plan="'+p.id+'">'+esc(p.text)+'</span><button type="button" class="ghost" data-del-plan="'+p.id+'" aria-label="刪除：'+esc(p.text)+'">刪除</button></li>';
+    }).join(''):'<li class="empty">把上方的單元模塊拖到日曆，或點一下模塊排進這天。</li>')+'</ul></div>';
     h+='<div class="panel"><h2>今天的活動</h2><ul>'+(evs.length?evs.map(function(e){
       return '<li><span>'+(e.time?esc(e.time)+'　':'')+esc(e.title)+'</span><button type="button" class="ghost" data-del-ev="'+e.id+'" aria-label="刪除活動：'+esc(e.title)+'">刪除</button></li>';
     }).join(''):'<li class="empty">這天還沒有活動。</li>')+'</ul>'
@@ -137,7 +162,12 @@ details summary{cursor:pointer;font-weight:700}
     document.getElementById('side').innerHTML=h;
   }
 
-  function all(){renderCal();renderSide();}
+  function renderTray(){
+    document.getElementById('tray').innerHTML=state.units.length?state.units.map(function(u){
+      return '<span class="chip" data-unit="'+u.id+'">'+esc(u.text)+'<button type="button" data-del-unit="'+u.id+'" aria-label="刪除模塊：'+esc(u.text)+'">×</button></span>';
+    }).join(''):'<p class="empty">還沒有模塊，先在上面輸入一個。</p>';
+  }
+  function all(){renderTray();renderCal();renderSide();}
   function val(id){return document.getElementById(id).value.trim();}
 
   document.getElementById('prev').onclick=function(){view.setMonth(view.getMonth()-1);renderCal();};
@@ -147,6 +177,9 @@ details summary{cursor:pointer;font-weight:700}
   document.addEventListener('click',function(e){
     var b=e.target.closest('button');if(!b)return;
     if(b.dataset.date){sel=b.dataset.date;var d=pd(sel);if(d.getMonth()!==view.getMonth()){view=new Date(d.getFullYear(),d.getMonth(),1);}all();return;}
+    if(b.id==='unAdd'){addUnit();return;}
+    if(b.dataset.delUnit){state.units=state.units.filter(function(x){return x.id!==b.dataset.delUnit;});save();all();return;}
+    if(b.dataset.delPlan){state.plans=state.plans.filter(function(x){return x.id!==b.dataset.delPlan;});save();all();return;}
     if(b.id==='addEv'){var t=val('evTitle');if(!t)return;state.events.push({id:uid(),title:t,date:sel,time:val('evTime')});save();all();}
     else if(b.dataset.delEv){state.events=state.events.filter(function(x){return x.id!==b.dataset.delEv;});save();all();}
     else if(b.id==='addBook'){var bt=val('bkTitle');if(!bt)return;state.books.push({id:uid(),week:weekKey(sel),title:bt,note:val('bkNote'),done:false});save();all();}
@@ -162,9 +195,66 @@ details summary{cursor:pointer;font-weight:700}
   });
   document.addEventListener('change',function(e){
     var el=e.target;
-    if(el.dataset.book){var bk=state.books.find(function(x){return x.id===el.dataset.book;});if(bk){bk.done=el.checked;save();all();}}
+    if(el.dataset.planDone){var pl=state.plans.find(function(x){return x.id===el.dataset.planDone;});if(pl){pl.done=el.checked;save();all();}}
+    else if(el.dataset.book){var bk=state.books.find(function(x){return x.id===el.dataset.book;});if(bk){bk.done=el.checked;save();all();}}
     else if(el.id==='vDone'&&state.vocab[sel]){state.vocab[sel].done=el.checked;save();all();}
   });
+
+  function addUnit(){
+    var t=val('unText');if(!t)return;
+    state.units.push({id:uid(),text:t});
+    document.getElementById('unText').value='';
+    save();all();
+  }
+  document.getElementById('unText').addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();addUnit();}
+  });
+
+  // Drag & drop (pointer events, works with mouse and touch)
+  var drag=null;
+  function clearOver(){document.querySelectorAll('.cell.over').forEach(function(n){n.classList.remove('over');});}
+  function cellAt(x,y){var el=document.elementFromPoint(x,y);return el&&el.closest('.cell');}
+  function drop(el,date){
+    if(el.dataset.unit){
+      var u=state.units.find(function(x){return x.id===el.dataset.unit;});
+      if(u)state.plans.push({id:uid(),text:u.text,date:date,done:false});
+    }else if(el.dataset.plan){
+      var p=state.plans.find(function(x){return x.id===el.dataset.plan;});
+      if(p)p.date=date;
+    }
+    sel=date;save();all();
+  }
+  function endDrag(){
+    if(drag&&drag.ghost)drag.ghost.remove();
+    clearOver();drag=null;
+  }
+  document.addEventListener('pointerdown',function(e){
+    var c=e.target.closest('[data-unit],[data-plan]');
+    if(!c||e.target.closest('button,input'))return;
+    drag={el:c,x:e.clientX,y:e.clientY,moved:false,ghost:null};
+  });
+  document.addEventListener('pointermove',function(e){
+    if(!drag)return;
+    if(!drag.moved){
+      if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<6)return;
+      drag.moved=true;
+      var g=drag.el.cloneNode(true);
+      g.className='chip ghostchip';g.removeAttribute('data-unit');g.removeAttribute('data-plan');
+      document.body.appendChild(g);drag.ghost=g;
+    }
+    e.preventDefault();
+    drag.ghost.style.left=e.clientX+'px';drag.ghost.style.top=e.clientY+'px';
+    clearOver();
+    var c=cellAt(e.clientX,e.clientY);if(c)c.classList.add('over');
+  });
+  document.addEventListener('pointerup',function(e){
+    if(!drag)return;
+    var d=drag,c=d.moved?cellAt(e.clientX,e.clientY):null;
+    endDrag();
+    if(d.moved){if(c)drop(d.el,c.dataset.date);}
+    else if(d.el.dataset.unit){drop(d.el,sel);}
+  });
+  document.addEventListener('pointercancel',endDrag);
 
   load();all();
 })();
