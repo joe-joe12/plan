@@ -63,6 +63,21 @@ li input[type=checkbox]{width:18px;height:18px;accent-color:var(--ok);flex:none}
 .big{font-size:1.15rem;font-weight:700}
 details summary{cursor:pointer;font-weight:700}
 .hint{font-size:.8rem;color:var(--muted);margin:6px 0 0}
+.cell .x{font-size:.72rem;line-height:1.25;background:var(--warn);color:#fff;border-radius:3px;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:560px){
+  .wrap{padding:16px 10px 48px}
+  .cell{min-height:52px;flex-direction:row;flex-wrap:wrap;align-content:flex-start;gap:3px;padding:3px}
+  .cell .n{width:100%;font-size:.85rem}
+  .cell .e,.cell .u,.cell .v,.cell .x{font-size:0;width:9px;height:9px;padding:0;border-radius:50%;display:block}
+  .cell .e{background:#5b8def}
+  .cell .v{background:var(--ok)}
+  .cell.sel .e,.cell.sel .u,.cell.sel .v{outline:1px solid #1f2a44}
+  button{min-height:40px}
+  button.ghost{min-height:32px}
+  .chip{min-height:40px}
+  li input[type=checkbox]{width:22px;height:22px}
+  .row.two{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -80,6 +95,7 @@ details summary{cursor:pointer;font-weight:700}
       <button type="button" id="unAdd">加入模塊</button>
     </div>
     <div class="tray" id="tray"></div>
+    <div id="tray2"></div>
     <p class="hint">把模塊拖到下方日曆的某一天，就會排進那天；也可以先點選日期，再點一下模塊。已排的單元可以再拖到別天。</p>
   </div>
   <div class="panel">
@@ -107,6 +123,24 @@ details summary{cursor:pointer;font-weight:700}
   function pd(s){var p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]);}
   function weekKey(s){var d=pd(s);d.setDate(d.getDate()-d.getDay());return ds(d);}
   function addDays(s,n){var d=pd(s);d.setDate(d.getDate()+n);return ds(d);}
+  var PK='exam-review-plan-v1', SUBS=[];
+  function readSubs(){try{var d=JSON.parse(localStorage.getItem(PK));return d&&Array.isArray(d.subjects)?d.subjects:[];}catch(e){return [];}}
+  function topicOf(ref){
+    if(!ref)return null;
+    var s=SUBS.find(function(x){return x.id===ref.s;});
+    var t=s&&s.topics.find(function(x){return x.id===ref.t;});
+    return t?{s:s,t:t}:null;
+  }
+  function setTopicDone(ref,v){
+    try{
+      var d=JSON.parse(localStorage.getItem(PK));
+      var s=d.subjects.find(function(x){return x.id===ref.s;});
+      var t=s&&s.topics.find(function(x){return x.id===ref.t;});
+      if(t){t.done=v;localStorage.setItem(PK,JSON.stringify(d));}
+    }catch(e){}
+  }
+  function planDone(p){var r=topicOf(p.ref);return r?r.t.done:p.done;}
+  function planText(p){var r=topicOf(p.ref);return r?r.s.name+'｜'+r.t.text:p.text;}
   var todayStr=ds(new Date()), sel=todayStr, view=pd(todayStr);view.setDate(1);
 
   function renderCal(){
@@ -122,7 +156,8 @@ details summary{cursor:pointer;font-weight:700}
         +'<span class="n">'+d.getDate()+'</span>'
         +evs.slice(0,2).map(function(e){return '<span class="e">'+esc(e.title)+'</span>';}).join('')
         +(evs.length>2?'<span class="e">+'+(evs.length-2)+' 項</span>':'')
-        +state.plans.filter(function(p){return p.date===k;}).slice(0,2).map(function(p){return '<span class="u">'+(p.done?'✓ ':'')+esc(p.text)+'</span>';}).join('')
+        +SUBS.filter(function(s){return s.date===k;}).map(function(s){return '<span class="x">考 '+esc(s.name)+'</span>';}).join('')
+        +state.plans.filter(function(p){return p.date===k;}).slice(0,2).map(function(p){return '<span class="u">'+(planDone(p)?'✓ ':'')+esc(planText(p))+'</span>';}).join('')
         +(v?'<span class="v">'+(v.done?'✓ ':'')+esc(v.text)+'</span>':'')+'</button>';
     }
     document.getElementById('grid').innerHTML=h;
@@ -135,7 +170,10 @@ details summary{cursor:pointer;font-weight:700}
     var v=state.vocab[sel];
     var h='<div class="panel"><div class="big">'+(d.getMonth()+1)+' 月 '+d.getDate()+' 日（週'+WD[d.getDay()]+'）</div></div>';
 
-    var pls=state.plans.filter(function(p){return p.date===sel;});
+    var pls=state.plans.filter(function(p){return p.date===sel;}).map(function(p){return {id:p.id,text:planText(p),done:planDone(p)};});
+    SUBS.filter(function(s){return s.date===sel;}).forEach(function(s){
+      h+='<div class="panel"><strong style="color:var(--warn)">這天考試：'+esc(s.name)+'</strong></div>';
+    });
     h+='<div class="panel"><h2>這天排的單元</h2><ul>'+(pls.length?pls.map(function(p){
       return '<li class="'+(p.done?'done':'')+'"><input type="checkbox" data-plan-done="'+p.id+'"'+(p.done?' checked':'')+' aria-label="完成：'+esc(p.text)+'"><span class="dragtxt" data-plan="'+p.id+'">'+esc(p.text)+'</span><button type="button" class="ghost" data-del-plan="'+p.id+'" aria-label="刪除：'+esc(p.text)+'">刪除</button></li>';
     }).join(''):'<li class="empty">把上方的單元模塊拖到日曆，或點一下模塊排進這天。</li>')+'</ul></div>';
@@ -164,10 +202,22 @@ details summary{cursor:pointer;font-weight:700}
 
   function renderTray(){
     document.getElementById('tray').innerHTML=state.units.length?state.units.map(function(u){
-      return '<span class="chip" data-unit="'+u.id+'">'+esc(u.text)+'<button type="button" data-del-unit="'+u.id+'" aria-label="刪除模塊：'+esc(u.text)+'">×</button></span>';
+      return '<span class="chip" tabindex="0" role="button" data-unit="'+u.id+'">'+esc(u.text)+'<button type="button" data-del-unit="'+u.id+'" aria-label="刪除模塊：'+esc(u.text)+'">×</button></span>';
     }).join(''):'<p class="empty">還沒有模塊，先在上面輸入一個。</p>';
   }
-  function all(){renderTray();renderCal();renderSide();}
+  function renderHomeTray(){
+    var sched={};
+    state.plans.forEach(function(p){if(p.ref)sched[p.ref.t]=1;});
+    var h='';
+    SUBS.forEach(function(s){
+      s.topics.forEach(function(t){
+        if(t.done||sched[t.id])return;
+        h+='<span class="chip" tabindex="0" role="button" data-uref="'+s.id+':'+t.id+'">'+esc(s.name)+'｜'+esc(t.text)+'</span>';
+      });
+    });
+    document.getElementById('tray2').innerHTML=h?'<p class="hint" style="margin:10px 0 0">首頁的單元（還沒排進日曆）</p><div class="tray">'+h+'</div>':'';
+  }
+  function all(){SUBS=readSubs();renderTray();renderHomeTray();renderCal();renderSide();}
   function val(id){return document.getElementById(id).value.trim();}
 
   document.getElementById('prev').onclick=function(){view.setMonth(view.getMonth()-1);renderCal();};
@@ -195,7 +245,7 @@ details summary{cursor:pointer;font-weight:700}
   });
   document.addEventListener('change',function(e){
     var el=e.target;
-    if(el.dataset.planDone){var pl=state.plans.find(function(x){return x.id===el.dataset.planDone;});if(pl){pl.done=el.checked;save();all();}}
+    if(el.dataset.planDone){var pl=state.plans.find(function(x){return x.id===el.dataset.planDone;});if(pl){pl.done=el.checked;if(pl.ref)setTopicDone(pl.ref,el.checked);save();all();}}
     else if(el.dataset.book){var bk=state.books.find(function(x){return x.id===el.dataset.book;});if(bk){bk.done=el.checked;save();all();}}
     else if(el.id==='vDone'&&state.vocab[sel]){state.vocab[sel].done=el.checked;save();all();}
   });
@@ -207,7 +257,7 @@ details summary{cursor:pointer;font-weight:700}
     save();all();
   }
   document.getElementById('unText').addEventListener('keydown',function(e){
-    if(e.key==='Enter'){e.preventDefault();addUnit();}
+    if(e.key==='Enter'&&!e.isComposing&&e.keyCode!==229){e.preventDefault();addUnit();}
   });
 
   // Drag & drop (pointer events, works with mouse and touch)
@@ -215,7 +265,10 @@ details summary{cursor:pointer;font-weight:700}
   function clearOver(){document.querySelectorAll('.cell.over').forEach(function(n){n.classList.remove('over');});}
   function cellAt(x,y){var el=document.elementFromPoint(x,y);return el&&el.closest('.cell');}
   function drop(el,date){
-    if(el.dataset.unit){
+    if(el.dataset.uref){
+      var q=el.dataset.uref.split(':'),r=topicOf({s:q[0],t:q[1]});
+      if(r)state.plans.push({id:uid(),text:r.s.name+'｜'+r.t.text,date:date,done:false,ref:{s:q[0],t:q[1]}});
+    }else if(el.dataset.unit){
       var u=state.units.find(function(x){return x.id===el.dataset.unit;});
       if(u)state.plans.push({id:uid(),text:u.text,date:date,done:false});
     }else if(el.dataset.plan){
@@ -229,7 +282,7 @@ details summary{cursor:pointer;font-weight:700}
     clearOver();drag=null;
   }
   document.addEventListener('pointerdown',function(e){
-    var c=e.target.closest('[data-unit],[data-plan]');
+    var c=e.target.closest('[data-unit],[data-uref],[data-plan]');
     if(!c||e.target.closest('button,input'))return;
     drag={el:c,x:e.clientX,y:e.clientY,moved:false,ghost:null};
   });
@@ -239,7 +292,7 @@ details summary{cursor:pointer;font-weight:700}
       if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<6)return;
       drag.moved=true;
       var g=drag.el.cloneNode(true);
-      g.className='chip ghostchip';g.removeAttribute('data-unit');g.removeAttribute('data-plan');
+      g.className='chip ghostchip';g.removeAttribute('data-unit');g.removeAttribute('data-uref');g.removeAttribute('data-plan');
       document.body.appendChild(g);drag.ghost=g;
     }
     e.preventDefault();
@@ -252,12 +305,23 @@ details summary{cursor:pointer;font-weight:700}
     var d=drag,c=d.moved?cellAt(e.clientX,e.clientY):null;
     endDrag();
     if(d.moved){if(c)drop(d.el,c.dataset.date);}
-    else if(d.el.dataset.unit){drop(d.el,sel);}
+    else if(d.el.dataset.unit||d.el.dataset.uref){drop(d.el,sel);}
   });
   document.addEventListener('pointercancel',endDrag);
+
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    if(e.isComposing||e.keyCode===229)return;
+    var t=e.target;
+    if(t.matches&&t.matches('.chip')){e.preventDefault();drop(t,sel);return;}
+    var map={evTitle:'addEv',evTime:'addEv',bkTitle:'addBook',bkNote:'addBook',vText:'vSave'};
+    if(e.key==='Enter'&&map[t.id]){e.preventDefault();document.getElementById(map[t.id]).click();}
+  });
+  window.addEventListener('storage',function(){load();all();});
 
   load();all();
 })();
 </script>
+<script src="shared.js"></script>
 </body>
 </html>
