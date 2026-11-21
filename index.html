@@ -70,7 +70,16 @@ button.ghost:hover{color:var(--warn); border-color:var(--warn)}
 .topic-add textarea{min-height:2.6em; resize:vertical}
 .topic-add .row{display:flex; justify-content:space-between; align-items:center; gap:8px}
 .hint{font-size:.8rem; color:var(--muted)}
-@media (max-width:620px){ form.add{grid-template-columns:1fr} }
+.topics li button+button{margin-left:0}
+.topics li small{white-space:nowrap}
+@media (max-width:620px){
+  form.add{grid-template-columns:1fr}
+  .wrap{padding:20px 12px 48px}
+  button{min-height:40px}
+  button.ghost{min-height:34px}
+  .topics input[type=checkbox],.today input[type=checkbox]{width:24px!important;height:24px!important}
+  .topic-add .row{flex-wrap:wrap}
+}
 @media (prefers-reduced-motion:reduce){ .bar i{transition:none} }
 </style>
 </head>
@@ -113,6 +122,15 @@ button.ghost:hover{color:var(--warn); border-color:var(--warn)}
     }catch(e){}
   }
   function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+  var CP = [];
+  function calPlans(){
+    try{ var d = JSON.parse(localStorage.getItem('exam-calendar-v1')); return (d && Array.isArray(d.plans)) ? d.plans : []; }
+    catch(e){ return []; }
+  }
+  function schedTag(sid, tid){
+    var p = CP.find(function(x){ return x.ref && x.ref.s===sid && x.ref.t===tid; });
+    return p ? '<small class="hint">排在 '+fmt(p.date)+'</small>' : '';
+  }
   function uid(){ return Math.random().toString(36).slice(2,10); }
   function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
@@ -132,6 +150,7 @@ button.ghost:hover{color:var(--warn); border-color:var(--warn)}
   }
 
   function render(){
+    CP = calPlans();
     state.subjects.sort(function(a,b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
 
     // header: next exam
@@ -142,13 +161,17 @@ button.ghost:hover{color:var(--warn); border-color:var(--warn)}
 
     // today's suggestions
     var todayItems = [];
+    var tk = new Date().toLocaleDateString('sv-SE'), sched = {};
+    CP.forEach(function(p){ if(p.ref && p.date===tk) sched[p.ref.t] = 1; });
     state.subjects.forEach(function(s){
       var n = daysLeft(s.date);
       if(n < 0) return;
       var remain = s.topics.filter(function(t){return !t.done;});
       if(!remain.length) return;
       var per = Math.ceil(remain.length / Math.max(1, n));
-      remain.slice(0, per).forEach(function(t){ todayItems.push({s:s,t:t}); });
+      var first = remain.filter(function(t){ return sched[t.id]; });
+      var rest = remain.filter(function(t){ return !sched[t.id]; });
+      first.concat(rest).slice(0, Math.max(per, first.length)).forEach(function(t){ todayItems.push({s:s,t:t}); });
     });
     var todayEl = document.getElementById('today');
     todayEl.innerHTML = todayItems.length ? todayItems.map(function(x){
@@ -173,6 +196,8 @@ button.ghost:hover{color:var(--warn); border-color:var(--warn)}
         + '<div class="meta">已完成 '+done+' / '+total+' 個單元（'+pct+'%）'+pace+'</div>'
         + '<ul class="topics">'+s.topics.map(function(t){
             return '<li class="'+(t.done?'done':'')+'"><input type="checkbox" data-sid="'+s.id+'" data-tid="'+t.id+'"'+(t.done?' checked':'')+' aria-label="完成：'+esc(t.text)+'"><span>'+esc(t.text)+'</span>'
+              + schedTag(s.id, t.id)
+              + '<button type="button" class="ghost" data-edit-topic="'+t.id+'" aria-label="修改單元：'+esc(t.text)+'">修改</button>'
               + '<button type="button" class="ghost" data-del-topic="'+t.id+'" aria-label="刪除單元：'+esc(t.text)+'">刪除</button></li>';
           }).join('')+'</ul>'
         + '<div class="topic-add"><textarea placeholder="輸入要複習的單元，一行一個" aria-label="新增單元"></textarea>'
@@ -208,6 +233,10 @@ button.ghost:hover{color:var(--warn); border-color:var(--warn)}
         s.topics.push({id:uid(), text:l.slice(0,100), done:false});
       });
       save(); render();
+    } else if(b.hasAttribute('data-edit-topic')){
+      var tp = s.topics.find(function(t){return t.id===b.dataset.editTopic;});
+      var nv = tp && prompt('修改單元名稱', tp.text);
+      if(nv && nv.trim()){ tp.text = nv.trim().slice(0,100); save(); render(); }
     } else if(b.hasAttribute('data-del-topic')){
       s.topics = s.topics.filter(function(t){return t.id!==b.dataset.delTopic;});
       save(); render();
@@ -219,8 +248,17 @@ button.ghost:hover{color:var(--warn); border-color:var(--warn)}
     }
   });
 
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229 && e.target.matches('.topic-add textarea')){
+      e.preventDefault();
+      e.target.closest('.subject').querySelector('[data-add-topics]').click();
+    }
+  });
+  window.addEventListener('storage',function(){ load(); render(); });
+
   load(); render();
 })();
 </script>
+<script src="shared.js"></script>
 </body>
 </html>
